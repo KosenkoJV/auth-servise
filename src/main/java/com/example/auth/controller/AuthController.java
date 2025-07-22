@@ -1,13 +1,21 @@
 package com.example.auth.controller;
 
-import com.example.auth.model.*;
+import com.example.auth.model.Role;
+import com.example.auth.model.User;
 import com.example.auth.repository.UserRepository;
-import org.springframework.web.bind.annotation.*;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.time.LocalDateTime;
+import javax.crypto.SecretKey;
+import java.time.Instant;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/auth")
@@ -16,12 +24,12 @@ public class AuthController {
     private final UserRepository users;
     private final PasswordEncoder encoder;
 
-    private final Map<String, Token> tokens = new ConcurrentHashMap<>();
-    private final int tokenMinutes = 15;
+    private final SecretKey secretKey;
 
     public AuthController(UserRepository users, PasswordEncoder encoder) {
         this.users = users;
         this.encoder = encoder;
+        this.secretKey = Keys.hmacShaKeyFor("ОченьДлинныйИСложныйСекретныйКлючДляJWT1234567890".getBytes());
     }
 
     @PostMapping("/register")
@@ -53,7 +61,7 @@ public class AuthController {
         }
 
         users.save(u);
-        return generateToken(login);
+        return generateToken(login, u.getRoles());
     }
 
     @PostMapping("/login")
@@ -66,37 +74,16 @@ public class AuthController {
         User user = opt.get();
         if (!encoder.matches(password, user.getPassword())) return "Wrong password";
 
-        return generateToken(login);
+        return generateToken(login, user.getRoles());
     }
 
     @GetMapping("/check")
-    public String check(@RequestHeader("Authorization") String header) {
-        String token = parseToken(header);
-        Token t = tokens.get(token);
-        if (t == null) return "Token not found";
-        if (t.getExpires().isBefore(LocalDateTime.now())) return "Token expired";
-        return "Token valid for: " + t.getUsername();
-    }
-
-    @PostMapping("/revoke")
-    public String revoke(@RequestHeader("Authorization") String header) {
-        String token = parseToken(header);
-        tokens.remove(token);
-        return "Token revoked";
-    }
-
-    @PostMapping("/refresh")
-    public String refresh(@RequestHeader("Authorization") String header) {
-        String oldToken = parseToken(header);
-        Token t = tokens.get(oldToken);
-        if (t == null) return "Token not found";
-        if (t.getExpires().isBefore(LocalDateTime.now())) return "Token expired";
-
-        String newToken = UUID.randomUUID().toString();
-        tokens.put(newToken, new Token(newToken, t.getUsername(), LocalDateTime.now().plusMinutes(tokenMinutes)));
-        tokens.remove(oldToken);
-
-        return newToken;
+    public String check() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return "Unauthorized";
+        }
+        return "Token valid for: " + auth.getName();
     }
 
     @GetMapping("/user-info")
@@ -106,26 +93,23 @@ public class AuthController {
 
         User u = opt.get();
 
-        Map<String, Object> info = new HashMap<>();
+        var info = new java.util.HashMap<String, Object>();
         info.put("id", u.getId());
         info.put("login", u.getLogin());
-        info.put("password", u.getPassword());
         info.put("email", u.getEmail());
         info.put("roles", u.getRoles());
 
         return info;
     }
 
-    private String generateToken(String username) {
-        String token = UUID.randomUUID().toString();
-        tokens.put(token, new Token(token, username, LocalDateTime.now().plusMinutes(tokenMinutes)));
-        return token;
-    }
-
-    private String parseToken(String header) {
-        if (header.startsWith("Bearer ")) {
-            return header.substring(7);
-        }
-        return header;
+    private String generateToken(String username, Set<Role> roles) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("roles", roles.stream().map(Enum::name).collect(Collectors.toList()))
+                .setIssuedAt(Date.from(now))
+                .setExpiration(Date.from(now.plusSeconds(900))) // 15 минут
+                .signWith(secretKey, SignatureAlgorithm.HS256)
+                .compact();
     }
 }

@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import java.util.Set;
 
 @Entity
-@Table(name = "users") // 'user' — зарезервированное слово в H2
+@Table(name = "users")
 public class User {
 
     @Id
