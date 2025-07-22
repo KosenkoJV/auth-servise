@@ -1,5 +1,6 @@
 server:
   port: 8080
+# Порт, на котором будет запущен веб-сервер приложения
 
 spring:
   datasource:
@@ -7,19 +8,30 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password:
+  # Настройки подключения к базе данных
+  # Используется встроенная in-memory база H2 с названием testdb
+  # Имя пользователя "sa", пароль пустой
+
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
+  # Конфигурация JPA и Hibernate
+  # ddl-auto: update — Hibernate автоматически обновляет схему БД при запуске
+  # show-sql: true — выводит в консоль все SQL-запросы для отладки
+
   h2:
     console:
       enabled: true
+  # Включает веб-консоль H2
 
   security:
     user:
       name: admin
       password: admin
+  # Конфигурация стандартного пользователя Spring Security с логином admin и паролем admin
 
 logging:
   level:
     org.springframework: info
+  # Уровень логирования для пакета org.springframework — выводит сообщения уровня INFO и выше
